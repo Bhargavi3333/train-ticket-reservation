@@ -1,116 +1,141 @@
-name: CI/CD Pipeline                                                              
+
+name: Build and Deploy train-ticket-reservation
 
 on:
   push:
     branches:
-      - dev
-   paths-ignore:
-      - 'workflow_dispatch':
+      - DEV
+      - TEST
+  workflow_dispatch:
+
 jobs:
+
+  # BUILD STAGE
   build:
+    name: Build Maven Project
     runs-on: ubuntu-latest
+
     steps:
-      # 1. Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Set up Java
-      - name: Set up JDK 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
+          cache: maven
 
-      # 3. Build WAR with Maven
-      - name: Validate
-        run: mvn validate
-      - name: Compile
-        run: mvn compile
-      - name: Test
-        run: mvn test
-      - name: Package
-        run: mvn package
+      - name: Build and Test with Maven
+        run: mvn clean verify
 
-      # 4. Verify WAR file
       - name: Verify WAR file
-        run: ls -lh target/
+        run: ls -lh target/*.war
 
-      # 5. Upload artifact
-      - name: Upload WAR
+      - name: Upload WAR artifact
         uses: actions/upload-artifact@v4
         with:
-          name: application-war
+          name: war-file
           path: target/*.war
+          if-no-files-found: error
+          retention-days: 5
 
-  # Deploy DEV
+  # DEV ENVIRONMENT
   deploy-dev:
-    name: Deploy DEV
+    name: Deploy to DEV
     needs: build
     runs-on: ubuntu-latest
-    environment: dev  # add required reviewers in GitHub → Settings → Environments
+
+    if: github.ref == 'refs/heads/DEV'
+
+    environment:
+      name: DEV
+
     steps:
-      - name: Download WAR
+      - name: Download WAR artifact
         uses: actions/download-artifact@v4
         with:
-          name: application-war
-          path: ./artifact
-      - name: Deploy to Tomcat DEV
-        run: |
-          curl -v -u ${{ secrets.DEV_TOMCAT_USER }}:${{ secrets.DEV_TOMCAT_PASSWORD }} \
-          -T ./artifact/TrainBook-1.0.0-SNAPSHOT.war \
-          "http://${{ secrets.DEV_TOMCAT_HOST }}:8080/manager/text/deploy?path=/TrainBook&update=true"
+          name: war-file
+          path: ./deploy
 
-  # Deploy TEST
+      - name: Deploy WAR to DEV Tomcat
+        env:
+          TOMCAT_URL: ${{ secrets.TOMCAT_URL_DEV }}
+          TOMCAT_USER: ${{ secrets.TOMCAT_USER_DEV }}
+          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_DEV }}
+
+        run: |
+          set -e
+
+          if [ -z "$TOMCAT_URL" ] || [ -z "$TOMCAT_USER" ] || [ -z "$TOMCAT_PASS" ]; then
+            echo "ERROR: DEV secrets are missing"
+            exit 1
+          fi
+
+          WAR_FILE=$(find ./deploy -maxdepth 1 -name "*.war" -print -quit)
+
+          if [ -z "$WAR_FILE" ]; then
+            echo "ERROR: WAR file not found"
+            exit 1
+          fi
+
+          URL="${TOMCAT_URL%/}"
+
+          echo "Deploying WAR to DEV"
+
+          curl --fail --show-error \
+            -u "$TOMCAT_USER:$TOMCAT_PASS" \
+            -T "$WAR_FILE" \
+            "$URL/deploy?path=/train-ticket-reservation&update=true"
+
+          echo "DEV deployment successful"
+
+  # TEST ENVIRONMENT
   deploy-test:
-    name: Deploy TEST
+    name: Deploy to TEST
     needs: build
     runs-on: ubuntu-latest
-    environment: test   # add required reviewers in GitHub → Settings → Environments
-    steps:
-      - name: Download WAR
-        uses: actions/download-artifact@v4
-        with:
-          name: application-war
-          path: ./artifact
-      - name: Deploy to Tomcat TEST
-        run: |
-          curl -v -u ${{ secrets.TEST_TOMCAT_USER }}:${{ secrets.TEST_TOMCAT_PASSWORD }} \
-          -T ./artifact/TrainBook-1.0.0-SNAPSHOT.war \
-          "http://${{ secrets.TEST_TOMCAT_HOST }}:8080/manager/text/deploy?path=/TrainBook&update=true"
 
-  # Deploy PrePROD
-  deploy-preprod:
-    name: Deploy PrePROD
-    needs: build
-    runs-on: ubuntu-latest
-    environment: preprod  # add required reviewers in GitHub → Settings → Environments
-    steps:
-      - name: Download WAR
-        uses: actions/download-artifact@v4
-        with:
-          name: application-war
-          path: ./artifact
-      - name: Deploy to Tomcat PrePROD
-        run: |
-          curl -v -u ${{ secrets.PREPROD_TOMCAT_USER }}:${{ secrets.PREPROD_TOMCAT_PASSWORD }} \
-          -T ./artifact/TrainBook-1.0.0-SNAPSHOT.war \
-          "http://${{ secrets.PREPROD_TOMCAT_HOST }}:8080/manager/text/deploy?path=/TrainBook&update=true"
+    if: github.ref == 'refs/heads/TEST'
 
-  # Deploy PROD
-  deploy-prod:
-    name: Deploy PROD
-    needs: build
-    runs-on: ubuntu-latest
-    environment: prod   # add required reviewers in GitHub → Settings → Environments
+    environment:
+      name: TEST
+
     steps:
-      - name: Download WAR
+      - name: Download WAR artifact
         uses: actions/download-artifact@v4
         with:
-          name: application-war
-          path: ./artifact
-      - name: Deploy to Tomcat PROD
+          name: war-file
+          path: ./deploy
+
+      - name: Deploy WAR to TEST Tomcat
+        env:
+          TOMCAT_URL: ${{ secrets.TOMCAT_URL_TEST }}
+          TOMCAT_USER: ${{ secrets.TOMCAT_USER_TEST }}
+          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_TEST }}
+
         run: |
-          curl -v -u ${{ secrets.PROD_TOMCAT_USER }}:${{ secrets.PROD_TOMCAT_PASSWORD }} \
-          -T ./artifact/TrainBook-1.0.0-SNAPSHOT.war \
-          "http://${{ secrets.PROD_TOMCAT_HOST }}:8080/manager/text/deploy?path=/TrainBook&update=true"
-          
+          set -e
+
+          if [ -z "$TOMCAT_URL" ] || [ -z "$TOMCAT_USER" ] || [ -z "$TOMCAT_PASS" ]; then
+            echo "ERROR: TEST secrets are missing"
+            exit 1
+          fi
+
+          WAR_FILE=$(find ./deploy -maxdepth 1 -name "*.war" -print -quit)
+
+          if [ -z "$WAR_FILE" ]; then
+            echo "ERROR: WAR file not found"
+            exit 1
+          fi
+
+          URL="${TOMCAT_URL%/}"
+
+          echo "Deploying WAR to TEST"
+
+          curl --fail --show-error \
+            -u "$TOMCAT_USER:$TOMCAT_PASS" \
+            -T "$WAR_FILE" \
+            "$URL/deploy?path=/train-ticket-reservation&update=true"
+
+          echo "TEST deployment successful"
