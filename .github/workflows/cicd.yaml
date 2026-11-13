@@ -3,7 +3,7 @@ name: Build and Deploy Train Ticket Reservation
 on:
   push:
     branches:
-      - PREPROD
+      - PRE_PROD
   workflow_dispatch:
 
 jobs:
@@ -38,13 +38,13 @@ jobs:
           if-no-files-found: error
 
   # TEST DEPLOYMENT STAGE
-  deploy-preprod:
-    name: Deploy to PREPROD
+  deploy-pre_prod:
+    name: Deploy to PRE_PROD
     needs: build
     runs-on: ubuntu-latest
 
     environment:
-      name: PREPROD
+      name: PRE_PROD
 
     steps:
       - name: Download WAR artifact
@@ -53,25 +53,25 @@ jobs:
           name: war-file
           path: ./deploy
 
-      - name: Check PREPROD Secrets
+      - name: Check PRE_PROD Secrets
         env:
-          TOMCAT_URL: ${{ secrets.TOMCAT_URL_PREPROD }}
-          TOMCAT_USER: ${{ secrets.TOMCAT_USER_PREPROD }}
-          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_PREPROD }}
+          TOMCAT_URL: ${{ secrets.TOMCAT_URL_PRE_PROD }}
+          TOMCAT_USER: ${{ secrets.TOMCAT_USER_PRE_PROD }}
+          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_PRE_PROD }}
         run: |
           set -e
 
-          [ -n "$TOMCAT_URL" ] || { echo "PREPROD URL missing"; exit 1; }
-          [ -n "$TOMCAT_USER" ] || { echo "PREPROD USER missing"; exit 1; }
-          [ -n "$TOMCAT_PASS" ] || { echo "PREPROD PASSWORD missing"; exit 1; }
+          [ -n "$TOMCAT_URL" ] || { echo "PRE_PROD URL missing"; exit 1; }
+          [ -n "$TOMCAT_USER" ] || { echo "PRE_PROD USER missing"; exit 1; }
+          [ -n "$TOMCAT_PASS" ] || { echo "PRE_PROD PASSWORD missing"; exit 1; }
 
           echo "All PREPROD secrets loaded successfully"
 
-      - name: Deploy WAR to PREPROD Tomcat
+      - name: Deploy WAR to PRE_PROD Tomcat
         env:
-          TOMCAT_URL: ${{ secrets.TOMCAT_URL_PREPROD }}
-          TOMCAT_USER: ${{ secrets.TOMCAT_USER_PREPROD }}
-          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_PREPROD }}
+          TOMCAT_URL: ${{ secrets.TOMCAT_URL_PRE_PROD }}
+          TOMCAT_USER: ${{ secrets.TOMCAT_USER_PRE_PROD }}
+          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_PRE_PROD }}
         run: |
           set -e
 
@@ -84,11 +84,11 @@ jobs:
 
           URL="${TOMCAT_URL%/}"
 
-          echo "Deploying $WAR_FILE to PREPROD"
+          echo "Deploying $WAR_FILE to PRE_PROD"
 
           curl --fail --show-error \
             -u "$TOMCAT_USER:$TOMCAT_PASS" \
             -T "$WAR_FILE" \
             "$URL/deploy?path=/train-ticket-reservation&update=true"
 
-          echo "PREPROD deployment successful"
+          echo "PRE_PROD deployment successful"
