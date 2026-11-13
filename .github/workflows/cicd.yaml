@@ -3,7 +3,7 @@ name: Build and Deploy Train Ticket Reservation
 on:
   push:
     branches:
-      -   PREPROD
+      - PREPROD
   workflow_dispatch:
 
 jobs:
