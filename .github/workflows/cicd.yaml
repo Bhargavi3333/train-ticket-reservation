@@ -160,3 +160,59 @@ jobs:
             "$URL/deploy?path=/train-ticket-reservation&update=true"
 
           echo "TEST deployment successful"
+
+  # TEST DEPLOYMENT STAGE
+  deploy-pre_prod:
+    name: Deploy to PRE_PROD
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: PRE_PROD
+
+    steps:
+      - name: Download WAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: war-file
+          path: ./deploy
+
+      - name: Check PRE_PROD Secrets
+        env:
+          TOMCAT_URL: ${{ secrets.TOMCAT_URL_PRE_PROD }}
+          TOMCAT_USER: ${{ secrets.TOMCAT_USER_PRE_PROD }}
+          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_PRE_PROD }}
+        run: |
+          set -e
+
+          [ -n "$TOMCAT_URL" ] || { echo "PRE_PROD URL missing"; exit 1; }
+          [ -n "$TOMCAT_USER" ] || { echo "PRE_PROD USER missing"; exit 1; }
+          [ -n "$TOMCAT_PASS" ] || { echo "PRE_PROD PASSWORD missing"; exit 1; }
+
+          echo "All PREPROD secrets loaded successfully"
+
+      - name: Deploy WAR to PRE_PROD Tomcat
+        env:
+          TOMCAT_URL: ${{ secrets.TOMCAT_URL_PRE_PROD }}
+          TOMCAT_USER: ${{ secrets.TOMCAT_USER_PRE_PROD }}
+          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_PRE_PROD }}
+        run: |
+          set -e
+
+          WAR_FILE=$(find ./deploy -maxdepth 1 -name "*.war" -print -quit)
+
+          if [ -z "$WAR_FILE" ]; then
+            echo "ERROR: WAR file not found"
+            exit 1
+          fi
+
+          URL="${TOMCAT_URL%/}"
+
+          echo "Deploying $WAR_FILE to PRE_PROD"
+
+          curl --fail --show-error \
+            -u "$TOMCAT_USER:$TOMCAT_PASS" \
+            -T "$WAR_FILE" \
+            "$URL/deploy?path=/train-ticket-reservation&update=true"
+
+          echo "PRE_PROD deployment successful"
