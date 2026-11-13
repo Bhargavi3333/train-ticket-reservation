@@ -1,113 +1,53 @@
 
-name: Build and Deploy train-ticket-reservation
-
-on:
-  push:
-    branches:
-      - DEV
-      - TEST
-  workflow_dispatch:
-
-jobs:
-
-  # BUILD STAGE
-  build:
-    name: Build Maven Project
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
-
-      - name: Build and Test with Maven
-        run: mvn clean verify
-
-      - name: Verify WAR file
-        run: ls -lh target/*.war
-
-      - name: Upload WAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: war-file
-          path: target/*.war
-          if-no-files-found: error
-          retention-days: 5
-
-  # DEV ENVIRONMENT
-  deploy-dev:
-    name: Deploy to DEV
-    needs: build
-    runs-on: ubuntu-latest
-
-    if: github.ref == 'refs/heads/DEV'
-
-    environment:
-      name: DEV
-
-    steps:
-      - name: Download WAR artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: war-file
-          path: ./deploy
-
-      - name: Deploy WAR to DEV Tomcat
-        env:
-          TOMCAT_URL: ${{ secrets.TOMCAT_URL_DEV }}
-          TOMCAT_USER: ${{ secrets.TOMCAT_USER_DEV }}
-          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_DEV }}
-
-        run: |
-          set -e
-
-          if [ -z "$TOMCAT_URL" ] || [ -z "$TOMCAT_USER" ] || [ -z "$TOMCAT_PASS" ]; then
-            echo "ERROR: DEV secrets are missing"
-            exit 1
-          fi
-
-          WAR_FILE=$(find ./deploy -maxdepth 1 -name "*.war" -print -quit)
-
-          if [ -z "$WAR_FILE" ]; then
-            echo "ERROR: WAR file not found"
-            exit 1
-          fi
-
-          URL="${TOMCAT_URL%/}"
-
-          echo "Deploying WAR to DEV"
-
-          curl --fail --show-error \
-            -u "$TOMCAT_USER:$TOMCAT_PASS" \
-            -T "$WAR_FILE" \
-            "$URL/deploy?path=/train-ticket-reservation&update=true"
-
-          echo "DEV deployment successful"
-
-  # TEST ENVIRONMENT
   deploy-test:
     name: Deploy to TEST
     needs: build
     runs-on: ubuntu-latest
 
-    if: github.ref == 'refs/heads/TEST'
-
+    # Connect GitHub TEST environment
     environment:
       name: TEST
 
+    # Run only when TEST branch is pushed
+    if: github.ref == 'refs/heads/TEST'
+
     steps:
+
+      # Download WAR artifact
       - name: Download WAR artifact
         uses: actions/download-artifact@v4
         with:
           name: war-file
           path: ./deploy
 
+      # Check TEST environment secrets
+      - name: Verify TEST Secrets
+        env:
+          TOMCAT_URL: ${{ secrets.TOMCAT_URL_TEST }}
+          TOMCAT_USER: ${{ secrets.TOMCAT_USER_TEST }}
+          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS_TEST }}
+
+        run: |
+          set -e
+
+          if [ -z "$TOMCAT_URL" ]; then
+            echo "ERROR: TOMCAT_URL_TEST is missing"
+            exit 1
+          fi
+
+          if [ -z "$TOMCAT_USER" ]; then
+            echo "ERROR: TOMCAT_USER_TEST is missing"
+            exit 1
+          fi
+
+          if [ -z "$TOMCAT_PASS" ]; then
+            echo "ERROR: TOMCAT_PASS_TEST is missing"
+            exit 1
+          fi
+
+          echo "All TEST secrets loaded successfully"
+
+      # Deploy WAR to TEST Tomcat
       - name: Deploy WAR to TEST Tomcat
         env:
           TOMCAT_URL: ${{ secrets.TOMCAT_URL_TEST }}
@@ -117,11 +57,6 @@ jobs:
         run: |
           set -e
 
-          if [ -z "$TOMCAT_URL" ] || [ -z "$TOMCAT_USER" ] || [ -z "$TOMCAT_PASS" ]; then
-            echo "ERROR: TEST secrets are missing"
-            exit 1
-          fi
-
           WAR_FILE=$(find ./deploy -maxdepth 1 -name "*.war" -print -quit)
 
           if [ -z "$WAR_FILE" ]; then
@@ -131,11 +66,12 @@ jobs:
 
           URL="${TOMCAT_URL%/}"
 
-          echo "Deploying WAR to TEST"
+          echo "Deploying $WAR_FILE to TEST"
 
           curl --fail --show-error \
-            -u "$TOMCAT_USER:$TOMCAT_PASS" \
-            -T "$WAR_FILE" \
+            --user "$TOMCAT_USER:$TOMCAT_PASS" \
+            --upload-file "$WAR_FILE" \
             "$URL/deploy?path=/train-ticket-reservation&update=true"
 
-          echo "TEST deployment successful"
+          echo "TEST deployment completed successfully"
+
